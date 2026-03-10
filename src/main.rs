@@ -1,18 +1,18 @@
 // =============================================================================
 // src/main.rs
 // snapcoin-db-inspector/src/main.rs
-// v0.4.1-sentinel-module-wireup.1
+// v0.4.2-sentinel-cli-wireup.1
 // Entry point: CLI parsing, AppState, Axum router, serve/cli dispatch.
 //
-// Change (v0.4.1 ... .1):
-// - ADD module declarations for sentinel components:
-//     mod events;
-//     mod rules;
-//     mod scanner;
-//     mod sentinel;
-// - No structural changes.
-// - No route changes.
-// - CLI subcommand wiring unchanged.
+// Change (v0.4.2 ... .1):
+// - ADD top-level Sentinel mode
+// - ADD sentinel subcommands:
+//     ScanIndex
+//     ScanRange
+//     ScanAll
+//     Watch
+// - Existing Serve and Cli modes remain unchanged
+// - No API route changes
 // =============================================================================
 
 mod api;
@@ -55,6 +55,41 @@ enum Mode {
         db: String,
         #[command(subcommand)]
         cmd: db::Cmd,
+    },
+
+    /// Run sentinel anomaly scans
+    Sentinel {
+        #[arg(long)]
+        db: String,
+
+        #[command(subcommand)]
+        cmd: SentinelCmd,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+enum SentinelCmd {
+    /// Scan one indexed tx entry
+    ScanIndex {
+        #[arg(long)]
+        index: u64,
+    },
+
+    /// Scan a range of indexed tx entries
+    ScanRange {
+        #[arg(long)]
+        start: u64,
+        #[arg(long)]
+        end: u64,
+    },
+
+    /// Scan the full DB for tx / UTXO anomalies
+    ScanAll,
+
+    /// Watch mode: periodically re-scan the DB
+    Watch {
+        #[arg(long, default_value_t = 5)]
+        poll_seconds: u64,
     },
 }
 
@@ -105,6 +140,40 @@ async fn main() -> Result<()> {
             db::run_cli(database, cmd)?;
             Ok(())
         }
+
+        Mode::Sentinel { db, cmd } => {
+            let database =
+                sled::open(&db).with_context(|| format!("open sled db at {db}"))?;
+
+            sentinel::print_banner();
+
+            match cmd {
+                SentinelCmd::ScanIndex { index } => {
+                    let cfg = sentinel::SentinelConfig::default();
+                    sentinel::run_index_scan(&database, &cfg, index)?;
+                }
+
+                SentinelCmd::ScanRange { start, end } => {
+                    let cfg = sentinel::SentinelConfig::default();
+                    sentinel::run_index_range_scan(&database, &cfg, start, end)?;
+                }
+
+                SentinelCmd::ScanAll => {
+                    let cfg = sentinel::SentinelConfig::default();
+                    sentinel::run_full_tx_scan(&database, &cfg)?;
+                }
+
+                SentinelCmd::Watch { poll_seconds } => {
+                    let cfg = sentinel::SentinelConfig {
+                        poll_seconds,
+                        ..Default::default()
+                    };
+                    sentinel::run_watch_loop(database, cfg).await?;
+                }
+            }
+
+            Ok(())
+        }
     }
 }
 
@@ -112,5 +181,5 @@ async fn main() -> Result<()> {
 // src/main.rs
 // snapcoin-db-inspector/src/main.rs
 // Created: 2026-02-26T00:00:00Z
-// Version: v0.4.1-sentinel-module-wireup.1
+// Version: v0.4.2-sentinel-cli-wireup.1
 // =============================================================================

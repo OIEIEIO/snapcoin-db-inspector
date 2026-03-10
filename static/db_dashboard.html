@@ -1,0 +1,313 @@
+<!doctype html>
+<!--
+  static/db_dashboard.html
+  snapcoin-db-inspector/static/db_dashboard.html
+  v0.4.0-wallet-intelligence.1
+  Snap-Coin UTXO sled explorer — full layout redesign
+
+  Change (v0.4.0 ... .1):
+  - REMOVE sidebar entirely
+  - REMOVE txid input, Decode button, Raw Hex button
+  - REMOVE Default Tree tab and its three buttons
+  - ADD extended topbar with live global metrics stats strip
+  - ADD address search bar + Inspect Wallet / Top Receivers / Raw JSON buttons
+  - ADD global intelligence panel (5 clickable stat chips, auto-loads on connect)
+  - ADD wallet summary strip (appears above UTXO timeline on inspect)
+  - ADD UTXO timeline — all outputs expanded inline, renders as decode arrives
+  - ADD filter bar (ALL / UNSPENT / SPENT) + sort toggle on timeline
+  - ADD progress indicator showing decode progress (N / total txids)
+  - KEEP Raw JSON panel accessible via button
+  - KEEP Top Receivers view accessible via button
+  - Atomic divisor: 100_000_000 (8 decimal places)
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SNAP-COIN · DB INSPECTOR</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital,wght@0,300;0,400;0,500;0,600;1,400&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/static/db_dashboard.css">
+  <script defer src="/static/db_dashboard.js"></script>
+</head>
+
+<body>
+<div class="shell">
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       TOPBAR — logo + global metrics strip + ws indicator
+  ════════════════════════════════════════════════════════════════ -->
+  <header class="topbar">
+
+    <!-- Logo -->
+    <div class="topbar-logo">
+      <div class="logo-hex">
+        <svg width="26" height="26" viewBox="0 0 26 26">
+          <polygon points="13,2 23,7.5 23,18.5 13,24 3,18.5 3,7.5"
+                   fill="none" stroke="#f0a832" stroke-width="1.5" opacity=".7"/>
+        </svg>
+        <span>SC</span>
+      </div>
+      <span class="topbar-title">Snap-Coin-DB-Inspector</span>
+      <div class="topbar-sep"></div>
+      
+    </div>
+
+    <!-- Global metrics strip — populated by JS on connect via /api/globals -->
+    <div class="topbar-metrics" id="topbarMetrics">
+      <div class="tmet" title="Unique wallets with at least one unspent output">
+        <span class="tmet-label">Wallets</span>
+        <span class="tmet-val" id="gWallets">—</span>
+      </div>
+      <div class="tmet-sep"></div>
+      <div class="tmet" title="Total transaction entries scanned">
+        <span class="tmet-label">TxIDs</span>
+        <span class="tmet-val" id="gTxids">—</span>
+      </div>
+      <div class="tmet-sep"></div>
+      <div class="tmet" title="Total decoded outputs">
+        <span class="tmet-label">Outputs</span>
+        <span class="tmet-val" id="gOutputs">—</span>
+      </div>
+      <div class="tmet-sep"></div>
+      <div class="tmet" title="Unspent outputs">
+        <span class="tmet-label">Unspent</span>
+        <span class="tmet-val" id="gUnspent">—</span>
+      </div>
+      <div class="tmet-sep"></div>
+      <div class="tmet" title="Total unspent supply in circulation">
+        <span class="tmet-label">Circulation</span>
+        <span class="tmet-val amber" id="gCirculation">—</span>
+      </div>
+    </div>
+
+    <!-- WS indicator -->
+    <div class="topbar-right">
+      <div class="ws-indicator" id="wsPill" title="Click to reconnect">
+        <div class="ws-dot" id="wsDot"></div>
+        <span id="wsTxt">disconnected</span>
+      </div>
+    </div>
+
+  </header>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       SEARCH BAR — address input + action buttons
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="searchbar">
+    <div class="search-inner">
+      <div class="search-input-wrap">
+        <span class="search-icon">⬡</span>
+        <input class="search-inp" id="addr"
+               placeholder="enter base36 receiver address to inspect wallet…"
+               autocomplete="off" spellcheck="false"/>
+        <button class="search-clear" id="btnClear" title="Clear">✕</button>
+      </div>
+      <div class="search-actions">
+        <button class="sbtn sbtn-primary" id="btnInspect">Inspect Wallet</button>
+        <button class="sbtn" id="btnTop">Top Receivers</button>
+        <button class="sbtn" id="btnRawJson">Raw JSON</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       INTELLIGENCE PANEL — global metrics chips, auto-loads on connect
+       Each chip is clickable and loads that address into the inspector
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="intel-panel" id="intelPanel">
+    <div class="intel-loading" id="intelLoading">
+      <div class="spinner-sm"></div>
+      <span>loading intelligence…</span>
+    </div>
+    <!-- Chips rendered by JS once /api/wallet_intelligence returns -->
+    <div class="intel-chips" id="intelChips" style="display:none">
+
+      <div class="intel-chip" id="ichip-active" title="Click to inspect this wallet">
+        <div class="ichip-icon">🔥</div>
+        <div class="ichip-body">
+          <div class="ichip-label">Most Active</div>
+          <div class="ichip-val" id="ic-active-val">—</div>
+          <div class="ichip-sub" id="ic-active-sub">— txs</div>
+        </div>
+      </div>
+
+      <div class="intel-chip" id="ichip-largest" title="Click to inspect this wallet">
+        <div class="ichip-icon">💎</div>
+        <div class="ichip-body">
+          <div class="ichip-label">Largest Output</div>
+          <div class="ichip-val" id="ic-largest-val">—</div>
+          <div class="ichip-sub" id="ic-largest-sub">— SNAP</div>
+        </div>
+      </div>
+
+      <div class="intel-chip" id="ichip-frag" title="Click to inspect this wallet">
+        <div class="ichip-icon">⚡</div>
+        <div class="ichip-body">
+          <div class="ichip-label">Most Fragmented</div>
+          <div class="ichip-val" id="ic-frag-val">—</div>
+          <div class="ichip-sub" id="ic-frag-sub">— unspent outputs</div>
+        </div>
+      </div>
+
+      <div class="intel-chip" id="ichip-growing" title="Click to inspect this wallet">
+        <div class="ichip-icon">📈</div>
+        <div class="ichip-body">
+          <div class="ichip-label">Fastest Growing</div>
+          <div class="ichip-val" id="ic-growing-val">—</div>
+          <div class="ichip-sub" id="ic-growing-sub">— delta</div>
+        </div>
+      </div>
+
+      <div class="intel-chip" id="ichip-spend" title="Click to inspect this wallet">
+        <div class="ichip-icon">💸</div>
+        <div class="ichip-body">
+          <div class="ichip-label">Highest Spend Rate</div>
+          <div class="ichip-val" id="ic-spend-val">—</div>
+          <div class="ichip-sub" id="ic-spend-sub">— % spent</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════
+       MAIN CONTENT AREA — wallet view / top receivers / raw json
+  ════════════════════════════════════════════════════════════════ -->
+  <div class="content" id="content">
+
+    <!-- ── Default / empty state ── -->
+    <div class="view on" id="view-empty">
+      <div class="empty fade">
+        <div class="empty-icon">⬡</div>
+        <div class="empty-text">enter an address above or click an intelligence chip to inspect a wallet</div>
+      </div>
+    </div>
+
+    <!-- ── Wallet view ── -->
+    <div class="view" id="view-wallet">
+
+      <!-- Wallet summary strip — populated by /api/wallet_stats/:address -->
+      <div class="wallet-summary" id="walletSummary" style="display:none">
+        <div class="ws-head">
+          <span class="ws-title">Wallet Summary</span>
+          <span class="ws-addr" id="wsSummaryAddr">—</span>
+          <span class="ws-trend" id="wsTrend">—</span>
+        </div>
+        <div class="ws-stats">
+          <div class="wstat">
+            <div class="wstat-label">Balance</div>
+            <div class="wstat-val amber" id="wsSummaryBalance">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Transactions</div>
+            <div class="wstat-val" id="wsSummaryTxCount">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Unspent</div>
+            <div class="wstat-val green" id="wsSummaryUnspent">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Spent</div>
+            <div class="wstat-val red" id="wsSummarySpent">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Largest Output</div>
+            <div class="wstat-val" id="wsSummaryLargest">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Avg Output</div>
+            <div class="wstat-val" id="wsSummaryAvg">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Spend Rate</div>
+            <div class="wstat-val" id="wsSummarySpendRate">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">Fragmentation</div>
+            <div class="wstat-val" id="wsSummaryFrag">—</div>
+          </div>
+          <div class="wstat">
+            <div class="wstat-label">vs Baseline</div>
+            <div class="wstat-val" id="wsSummaryDelta">—</div>
+          </div>
+        </div>
+        <div class="ws-foot">
+          <span class="ws-foot-item">First seen: <span class="ws-txid" id="wsFirstSeen">—</span></span>
+          <span class="ws-foot-sep">·</span>
+          <span class="ws-foot-item">Last seen: <span class="ws-txid" id="wsLastSeen">—</span></span>
+        </div>
+      </div>
+
+      <!-- Decode progress bar — shown while parallel fetches are in flight -->
+      <div class="decode-progress" id="decodeProgress" style="display:none">
+        <div class="dp-bar-wrap">
+          <div class="dp-bar" id="dpBar"></div>
+        </div>
+        <span class="dp-text" id="dpText">decoding 0 / 0 transactions…</span>
+      </div>
+
+      <!-- Filter + sort bar -->
+      <div class="filter-bar" id="filterBar" style="display:none">
+        <div class="filter-pills">
+          <button class="fpill on" data-filter="all">All</button>
+          <button class="fpill" data-filter="unspent">Unspent</button>
+          <button class="fpill" data-filter="spent">Spent</button>
+        </div>
+        <div class="filter-right">
+          <span class="filter-count" id="filterCount">0 transactions</span>
+          <button class="sort-btn" id="btnSort" title="Toggle sort order">↕ Newest First</button>
+        </div>
+      </div>
+
+      <!-- UTXO timeline — rows rendered by JS as decode responses arrive -->
+      <div class="timeline" id="timeline"></div>
+
+    </div>
+
+    <!-- ── Top receivers view ── -->
+    <div class="view" id="view-top">
+      <div class="recv-layout">
+        <div class="card" id="recvListCard">
+          <div class="card-head">
+            <span class="card-title">Top Receivers</span>
+            <span class="card-meta" id="recvMeta">—</span>
+          </div>
+          <!-- rows appended by JS -->
+        </div>
+        <div class="card" id="recvPieCard">
+          <div class="card-head">
+            <span class="card-title">Distribution</span>
+            <span class="card-meta" id="recvPieMeta">—</span>
+          </div>
+          <div class="pie-wrap" id="pieWrap"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Raw JSON view ── -->
+    <div class="view" id="view-raw">
+      <div class="card">
+        <div class="card-head">
+          <span class="card-title">Raw JSON</span>
+          <span class="card-meta" id="rawMeta">—</span>
+        </div>
+        <div class="card-body">
+          <pre class="raw" id="rawOut">awaiting query…</pre>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /content -->
+
+</div><!-- /shell -->
+</body>
+</html>
+
+<!--
+  static/db_dashboard.html
+  snapcoin-db-inspector/static/db_dashboard.html
+  Created: 2026-02-26T00:00:00Z
+-->

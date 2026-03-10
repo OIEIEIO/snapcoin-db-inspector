@@ -1,20 +1,26 @@
 // =============================================================================
 // src/main.rs
 // snapcoin-db-inspector/src/main.rs
-// v0.4.0-wallet-intelligence.1
+// v0.4.1-sentinel-module-wireup.1
 // Entry point: CLI parsing, AppState, Axum router, serve/cli dispatch.
 //
-// Change (v0.4.0 ... .1):
-// - ADD HTTP routes for wallet intelligence endpoints:
-//     GET /api/wallet_intelligence
-//     GET /api/wallet_stats/:address
-// - No structural changes. CLI subcommand wiring unchanged —
-//   new db::Cmd variants (WalletIntelligence, WalletStats) route
-//   automatically via db::run_cli().
+// Change (v0.4.1 ... .1):
+// - ADD module declarations for sentinel components:
+//     mod events;
+//     mod rules;
+//     mod scanner;
+//     mod sentinel;
+// - No structural changes.
+// - No route changes.
+// - CLI subcommand wiring unchanged.
 // =============================================================================
 
 mod api;
 mod db;
+mod events;
+mod rules;
+mod scanner;
+mod sentinel;
 mod ws;
 
 use anyhow::{anyhow, Context, Result};
@@ -70,19 +76,19 @@ async fn main() -> Result<()> {
                 // Static assets (CSS/JS/HTML)
                 .nest_service("/static", ServeDir::new("static"))
                 // API — globals + balance + utxos
-                .route("/api/globals",              get(api::api_globals))
-                .route("/api/get/{txid}",           get(api::api_get_txid))
-                .route("/api/decode/{txid}",        get(api::api_decode_txid))
-                .route("/api/utxos_for/{address}",  get(api::api_utxos_for))
-                .route("/api/balance/{address}",    get(api::api_balance))
-                .route("/api/top_receivers",        get(api::api_top_receivers))
+                .route("/api/globals", get(api::api_globals))
+                .route("/api/get/{txid}", get(api::api_get_txid))
+                .route("/api/decode/{txid}", get(api::api_decode_txid))
+                .route("/api/utxos_for/{address}", get(api::api_utxos_for))
+                .route("/api/balance/{address}", get(api::api_balance))
+                .route("/api/top_receivers", get(api::api_top_receivers))
                 // API — wallet intelligence
-                .route("/api/wallet_intelligence",          get(api::api_wallet_intelligence))
-                .route("/api/wallet_stats/{address}",       get(api::api_wallet_stats))
+                .route("/api/wallet_intelligence", get(api::api_wallet_intelligence))
+                .route("/api/wallet_stats/{address}", get(api::api_wallet_stats))
                 // API — default-tree inspector endpoints
-                .route("/api/inspect_default",  get(api::api_inspect_default))
-                .route("/api/prefix_stats",     get(api::api_prefix_stats))
-                .route("/api/preview_keys",     get(api::api_preview_keys))
+                .route("/api/inspect_default", get(api::api_inspect_default))
+                .route("/api/prefix_stats", get(api::api_prefix_stats))
+                .route("/api/preview_keys", get(api::api_preview_keys))
                 // WebSocket
                 .route("/ws", get(ws::ws_upgrade))
                 .with_state(state);
@@ -106,4 +112,5 @@ async fn main() -> Result<()> {
 // src/main.rs
 // snapcoin-db-inspector/src/main.rs
 // Created: 2026-02-26T00:00:00Z
+// Version: v0.4.1-sentinel-module-wireup.1
 // =============================================================================
